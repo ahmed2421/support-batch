@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" 
+	xmlns:spring="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="22fc068e-c397-4a84-a011-23c2052a1a53" >
+		<http:listener-connection host="localhost" port="8081" />
+	</http:listener-config>
+	
+	<flow name="support-batchFlow">
+        <http:listener config-ref="HTTP_Listener_config" path="/test" allowedMethods="POST" doc:name="HTTP"/>
+		<logger level="INFO" doc:name="Logger" doc:id="27ef4185-a603-436d-a527-f01f1a9d234d" message="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="9ca303fe-d10a-466c-a384-7868e96631ae" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+[1,2,3,4,5,6,7,8,9,10,11,12,13]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<batch:job jobName="support-batchBatch_Job" doc:id="87d990d1-0583-4a24-8b17-b6345b5ccefd" maxFailedRecords="-1">
+			<batch:process-records>
+				<batch:step name="firstStep" acceptExpression="#[(payload mod 2) == 0]">
+                <logger message="*** BEGIN FIRST STEP ***" level="INFO" doc:name="Logger" />
+                <flow-ref name="firstStep" doc:name="firstStep" />
+					<batch:aggregator doc:name="Batch Aggregator" doc:id="49e11129-8945-43ae-9c07-7a214cd5c39b" size="3">
+						<logger level="INFO" doc:name="Logger" doc:id="c04b2ba3-6870-41a7-977b-c823c7d6d836" message="#[payload]"/>
+					</batch:aggregator>
+            
+</batch:step>
+				<batch:step name="secondStep" acceptExpression="#[(payload mod 2) != 0]">
+                <flow-ref name="secondStep" doc:name="secondStep" />
+                <logger message="*** FINISH SECOND STEP ***" level="INFO" doc:name="Logger" />
+            </batch:step>
+				<batch:step name="HandleFailure" acceptPolicy="ONLY_FAILURES">
+                <logger message="*** HANDLE FAILURES *** There was a failure processing this record: #[message.payload] " level="INFO" doc:name="Log Failed record" />
+                <!--  logger message="*** THE STEP EXCEPTIONS ARE: *** #[getStepExceptions()]" level="INFO" doc:name="Log Exception" / -->
+            </batch:step>
+			</batch:process-records>
+			<batch:on-complete >
+				<logger message="*** END OF BATCH PROCESSING ***" level="INFO" doc:name="Logger" />
+			</batch:on-complete>
+		</batch:job>
+		<set-payload value="Batch processing started" doc:name="Set Payload"/>
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="abbdbb17-2af8-40b5-9d29-52fbc8709143" >
+				<logger level="INFO" doc:name="Logger" doc:id="627f895a-c3b9-45ad-8f55-59b73023b9b5" message="Error:: #[error.description]"/>
+			</on-error-propagate>
+		</error-handler>
+    
+</flow>
+    <sub-flow name="firstStep">
+        <!-- set-payload value="#[payload.toLowerCase()]" doc:name="Set Payload"/ -->
+        <logger level="INFO" message="*** FIRST STEP *** Processing: #[payload]" doc:name="Logger"/>
+    </sub-flow>
+    <sub-flow name="secondStep">
+        <logger level="INFO" message="*** SECOND STEP *** Processing: #[payload]" doc:name="Logger"/>
+        <scripting:execute doc:name="Execute" doc:id="89c1e9ec-f09b-45c8-8d30-8d08f27e91d8" engine="groovy">
+			<scripting:code >
+println &quot;*** GROOVY RECORD PROCESSOR ***&quot;
+println &quot;PAYLOAD&quot; + fruit + &quot;!&quot;
+
+if(fruit.equals(&quot;orange&quot;) || fruit.equals(&quot;apple&quot;) || fruit.equals(&quot;banana&quot;))
+   sleep(2000)
+  
+if(fruit.equals(&quot;acai&quot;))
+    throw new Exception(&quot;Failed record&quot;)
+    
+println &quot;*** EXIT GROOVY ***&quot;</scripting:code>
+			<scripting:parameters ><![CDATA[#[{"fruit":payload}]]]></scripting:parameters>
+		</scripting:execute>
+		<!-- custom-processor class="com.mulesoft.support.CheckBatchStatus" doc:name="Custom_Processor"/ -->
+    </sub-flow>
+
+
+</mule>
